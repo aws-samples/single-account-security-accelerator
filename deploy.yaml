@@ -279,6 +279,7 @@ Resources:
         detail:
           severity:
             - 4
+            - 4.0
             - 4.1
             - 4.2
             - 4.3
@@ -289,6 +290,7 @@ Resources:
             - 4.8
             - 4.9
             - 5
+            - 5.0
             - 5.1
             - 5.2
             - 5.3
@@ -299,6 +301,7 @@ Resources:
             - 5.8
             - 5.9
             - 6
+            - 6.0
             - 6.1
             - 6.2
             - 6.3
@@ -309,6 +312,7 @@ Resources:
             - 6.8
             - 6.9
             - 7
+            - 7.0
             - 7.1
             - 7.2
             - 7.3
@@ -319,6 +323,7 @@ Resources:
             - 7.8
             - 7.9
             - 8
+            - 8.0
             - 8.1
             - 8.2
             - 8.3
@@ -331,6 +336,20 @@ Resources:
       Targets: 
         - Arn: !Ref snsNotificiations
           Id: snsNotifications
+          InputTransformer:
+            InputPathsMap:
+              Account_ID: $.detail.accountId
+              Finding_ID: $.detail.id
+              Finding_Type: $.detail.type
+              Finding_description: $.detail.description
+              region: $.region
+              severity: $.detail.severity
+            InputTemplate: >-
+              "AWS account <Account_ID> has a severity <severity> GuardDuty finding type <Finding_Type> in the <region> region."
+              
+              "Finding Description: <Finding_description>"
+
+              "For more details navigate to the GuardDuty console at https://console.aws.amazon.com/guardduty/home?region=<region>#/findings?search=id%3D<Finding_ID>"
 
 
 Outputs:
