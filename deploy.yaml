@@ -4,6 +4,9 @@ Parameters:
   pEmailNotification:
     Type: String
     Default: email@domain.com
+  pSecurityHubEmailsRate:
+    Type: String
+    Default: cron(0 17 * * ? *) 
 
 Resources:
 
@@ -109,6 +112,31 @@ Resources:
                     - 'cloudformation:CreateStack'
                     - 'cloudformation:DeleteStack'
                     - 'cloudformation:Desc*'
+                  Resource: '*'
+  iamSecurityHubLambdaAlertsRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Path: /
+        Policies:
+          - PolicyName: !Sub 'securityhub-enabled-role-${AWS::Region}'
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Sid: CreateLogGroup
+                  Effect: Allow
+                  Action:
+                    - 'logs:CreateLogGroup'
+                    - 'logs:CreateLogStream'
+                    - 'logs:PutLogEvents'
+                    - 'securityhub:GetFindings'
+                    - 'sns:Publish'
                   Resource: '*'
 
   fnGuardDutyEnabled:
@@ -242,6 +270,77 @@ Resources:
                     cfn_response=cfn.delete_stack(
                             StackName='securityhub-cfn-stack')
                     cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+  fnSecurityHubLambdaAlert:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt iamSecurityHubLambdaAlertsRole.Arn
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 180
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref snsNotifications
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+
+          SNS_TOPIC = os.environ['SNS_TOPIC_ARN']
+
+          def lambda_handler(event,context):
+              sh = boto3.client('securityhub')
+              sh.get_findings()
+              sns = boto3.client('sns')
+
+              response = sh.get_findings(
+                  Filters={
+                      'SeverityLabel': [
+                          {
+                              'Value': 'CRITICAL',
+                              'Comparison': 'EQUALS'
+                          },
+                          {
+                              'Value': 'HIGH',
+                              'Comparison': 'EQUALS'
+                          }],
+                      'RecordState': [
+                          {
+                              'Value': 'ACTIVE',
+                              'Comparison': 'EQUALS'
+                          },
+
+                      ]
+                  },
+                  SortCriteria=[
+                      {
+                          'Field': 'SeverityLabel',
+                          'SortOrder': 'asc'
+                      },
+                  ],
+                  MaxResults=10
+              )
+
+              message = ""
+
+              if len(response["Findings"])>0:
+                  for finding in response["Findings"]:
+                      severity = finding["Severity"]["Label"]
+                      title = finding["Title"]
+                      message = message + f"{severity:<15}{title}\n"
+              elif():
+                  message = "There are no critical or high findings. Please check the console for other severities."
+
+              messageTitle = """Top findings from AWS Security Hub.\n--------------------------------------\nUp to 10 critical and high findings will be shown. Please review the summary and remediate. Navigate to the AWS Security Hub console (https://console.aws.amazon.com/securityhub) for more information and other findings.\n\n"""
+              message = messageTitle + message
+
+              response = sns.publish(
+                  TargetArn=SNS_TOPIC,
+                  Message=message,
+                  Subject='Top findings from AWS Security Hub.'
+              )
+              return response
+
 
   ConfigureGuardDuty:
     Type: 'Custom::LambdaCustomResource'
@@ -259,13 +358,12 @@ Resources:
     Properties:
       ServiceToken: !GetAtt fnSecurityHubEnabled.Arn
 
-  snsNotificiations:
+  snsNotifications:
     Type: AWS::SNS::Topic
     Properties:
       Subscription:
         - Endpoint: !Ref pEmailNotification
           Protocol: email
-      TopicName: SecurityNotifications
 
   ruleGuardDutyAlerts:
     Type: AWS::Events::Rule
@@ -278,63 +376,13 @@ Resources:
           - GuardDuty Finding
         detail:
           severity:
-            - 4
-            - 4.0
-            - 4.1
-            - 4.2
-            - 4.3
-            - 4.4
-            - 4.5
-            - 4.6
-            - 4.7
-            - 4.8
-            - 4.9
-            - 5
-            - 5.0
-            - 5.1
-            - 5.2
-            - 5.3
-            - 5.4
-            - 5.5
-            - 5.6
-            - 5.7
-            - 5.8
-            - 5.9
-            - 6
-            - 6.0
-            - 6.1
-            - 6.2
-            - 6.3
-            - 6.4
-            - 6.5
-            - 6.6
-            - 6.7
-            - 6.8
-            - 6.9
-            - 7
-            - 7.0
-            - 7.1
-            - 7.2
-            - 7.3
-            - 7.4
-            - 7.5
-            - 7.6
-            - 7.7
-            - 7.8
-            - 7.9
-            - 8
-            - 8.0
-            - 8.1
-            - 8.2
-            - 8.3
-            - 8.4
-            - 8.5
-            - 8.6
-            - 8.7
-            - 8.8
-            - 8.9
+            - numeric:
+              - '>='
+              - 4
+              - <
+              - 9
       Targets: 
-        - Arn: !Ref snsNotificiations
+        - Arn: !Ref snsNotifications
           Id: snsNotifications
           InputTransformer:
             InputPathsMap:
@@ -351,6 +399,23 @@ Resources:
 
               "For more details navigate to the GuardDuty console at https://console.aws.amazon.com/guardduty/home?region=<region>#/findings?search=id%3D<Finding_ID>"
 
+  ruleSecurityHubAlerts:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: "SecurityHubAlerts"
+      ScheduleExpression: !Ref pSecurityHubEmailsRate
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt fnSecurityHubLambdaAlert.Arn
+          Id: fnSecurityHubLambdaAlert
+  
+  permRuleSecurityHubAlerts:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt fnSecurityHubLambdaAlert.Arn
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ruleSecurityHubAlerts.Arn
 
 Outputs:
   GuardDutyStatus:
