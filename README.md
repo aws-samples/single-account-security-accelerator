@@ -1,92 +1,52 @@
 # Single Account Security Accelerator
 
+Security is the Top Priority at AWS, and The _Single Account Security Accelerator_ is a collection of best practices to improve your security posture in a single-account environment. While we recommend that all of our customers embrace a multi-account architecture as mentioned in our [Security Reference Architecture](https://docs.aws.amazon.com/prescriptive-guidance/latest/security-reference-architecture/architecture.html), we recognize that not everyone is able to do so. 
+
+By deploying this CloudFormation template, you will be enabling many of the recommended best practices, such as:
+- Enabling [GuardDuty](https://aws.amazon.com/guardduty/)
+- Enabling [AWS Config](https://aws.amazon.com/config/)
+    - Deploying the [Operational Best Practices for CIS AWS Foundations Benchmark](https://docs.aws.amazon.com/config/latest/developerguide/operational-best-practices-for-cis_aws_benchmark_level_1.html)
+- Setting up notifications from GuardDuty on a regular basis for new findings
+- Enabling [Security Hub](https://aws.amazon.com/security-hub/)
+
+## How to implement in your account
+
+- Download this [cloudformation template](#linkhere)
+- Log in to your AWS Console
+- Open CloudFormation
+    - *images*?
+- Go to Stacks
+- Create a stack with new resources
+- Select this template via "Upload a template"
+- Specify the name of the stack (for future reference), your preferred email address to receive security notifications, and the frequency you'd like to receive emails (to [Cron specifications](https://docs.aws.amazon.com/lambda/latest/dg/services-cloudwatchevents-expressions.html))
+
+## Components deployed in this package
+For you reference, we leverage the following Amazon services in this template:
+- Amazon GuardDuty
+- AWS Config
+- AWS Security Hub
+- Amazon Simple Notification Service
+- AWS Lambda
+- Amazon EventBridge
+- Service roles for these services
 
 
-## Getting started
+## Post-installation notes
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+- You can view the outputs of the cloudformation stack to see what was enabled as part of the template for your own awareness.  
+- GuardDuty immediately provides protection for your AWS account. If this is your first time activating GuardDuty, it may take some time for the machine learning to understand your account and baseline anomolies. 
+  - Also to note, if this is your first time you have 30 days of free GuardDuty protection
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Average Spend
+GuardDuty and Security Hub have a 30 day trial period for accounts that have not utilized GuardDuty or Security Hub in the past. Otherwise, this solution was designed with efficiency in mind, and you can visit the [AWS Calculator](https://calculator.aws/) for more information.
 
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.aws.dev/schiefj/single-account-security-accelerator.git
-git branch -M main
-git push -uf origin main
-```
-
-## Integrate with your tools
-
-- [ ] [Set up project integrations](https://gitlab.aws.dev/schiefj/single-account-security-accelerator/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+## How to revert these changes
+If this solution doesn't meet your needs, or if you would rather migrate to a multi-account structure rather than install of this in a single account, you can delete the stackset by:
+- Going to CloudFormation
+- Selecting the stack name that you created during the install proccess and then push delete
 
 ## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+If you have ideas for releases in the future, we're open to feedback to improve the solutions we create for our customers. 
 
 ## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+This was created by Jeremy Schiefer, Brian Galloway, and Anthony Harvey of Amazon Web Services.
