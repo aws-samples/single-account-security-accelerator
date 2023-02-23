@@ -10,8 +10,55 @@ Parameters:
 
 Resources:
 
+  kmsKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      EnableKeyRotation: true
+      Enabled: true
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: key-default-1
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow CloudWatch Events to use KMS key
+            Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - kms:GenerateDataKey*
+              - kms:Decrypt
+            Resource: '*'
+      KeySpec: SYMMETRIC_DEFAULT
+      KeyUsage: ENCRYPT_DECRYPT
+      MultiRegion: false
+      PendingWindowInDays: 7
+
+  iamLambdaLogAccess:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+            Resource:
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*' 
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource:
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*'
+
   iamGuardDutyEnabledRole:
-    Type: 'AWS::IAM::Role'
+    Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -21,27 +68,29 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Path: /
+      ManagedPolicyArns:
+        - !Ref iamLambdaLogAccess
+        - arn:aws:iam::aws:policy/AmazonGuardDutyFullAccess
       Policies:
-        - PolicyName: !Sub 'resource-checker-lambda-policy-${AWS::Region}'
+        - PolicyName: !Sub 'guardduty-enabled-role-${AWS::Region}'
           PolicyDocument:
             Version: 2012-10-17
             Statement:
-              - Sid: CreateLogGroup
+              - Sid: GuardDutyCloudFormation 
                 Effect: Allow
                 Action:
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
-                  - 'iam:CreateServiceLinkedRole'
                   - 'cloudformation:CreateStack'
                   - 'cloudformation:DeleteStack'
                   - 'cloudformation:Desc*'
-                  - 'guardduty:CreateDetector'
-                  - 'guardduty:ListDetectors'
-                  - 'guardduty:DeleteDetector'
-                Resource: '*'
+                Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/guardduty-cfn-stack/*'
+
   iamConfigEnabledRole:
-    Type: 'AWS::IAM::Role'
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: Config Actions don't allow a resource specified.
     Properties:
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -51,26 +100,24 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Path: /
+      ManagedPolicyArns:
+        - !Ref iamLambdaLogAccess
       Policies:
         - PolicyName: !Sub 'config-enabled-role-${AWS::Region}'
           PolicyDocument:
             Version: 2012-10-17
             Statement:
-              - Sid: CreateLogGroup
+              - Sid: AdministerConfig
                 Effect: Allow
                 Action:
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
-                  - 'iam:CreateRole'
-                  - 'iam:DeleteRole'
-                  - 'iam:GetRole'
-                  - 'iam:PassRole'
-                  - 'iam:AttachRolePolicy'
-                  - 'iam:DetachRolePolicy'
-                  - 'cloudformation:CreateStack'
-                  - 'cloudformation:DeleteStack'
-                  - 'cloudformation:Desc*'
+                  - 'config:*ConfigurationRecorder'
+                  - 'config:DescribeConfigurationRecorders'
+                  - 'config:PutDeliveryChannel'
+                  - 'config:DeleteDeliveryChannel'
+                Resource: '*'
+              - Sid: ConfigBucket
+                Effect: Allow
+                Action:
                   - 's3:CreateBucket'
                   - 's3:CreateBucketPolicy'
                   - 's3:DeleteBucketPolicy'
@@ -79,13 +126,37 @@ Resources:
                   - 's3:GetEncryptionConfiguration'
                   - 's3:PutEncryptionConfiguration'
                   - 's3:PutBucketPublicAccessBlock'
-                  - 'config:*ConfigurationRecorder'
-                  - 'config:DescribeConfigurationRecorders'
-                  - 'config:PutDeliveryChannel'
-                  - 'config:DeleteDeliveryChannel'
-                Resource: '*'
+                Resource:
+                  - !Sub 'arn:aws:s3:::config-bucket-${AWS::AccountId}-${AWS::Region}'
+              - Sid: ConfigPassRole
+                Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/config-cfn-stack-ConfigRole-*'
+                Condition:
+                  StringEquals:
+                    iam:PassedToService:
+                      - 'config.amazonaws.com'
+                      - 'ssm.amazonaws.com'
+              - Sid: ConfigRole
+                Effect: Allow
+                Action:
+                  - 'iam:CreateRole'
+                  - 'iam:DeleteRole'
+                  - 'iam:GetRole'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:DetachRolePolicy'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/config-cfn-stack-ConfigRole-*'
+              - Sid: ConfigCloudFormation
+                Effect: Allow
+                Action:
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:DeleteStack'
+                  - 'cloudformation:Desc*'
+                Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/config-cfn-stack/*'
+
   iamSecurityHubEnabledRole:
-      Type: 'AWS::IAM::Role'
+      Type: AWS::IAM::Role
       Properties:
         AssumeRolePolicyDocument:
           Version: 2012-10-17
@@ -95,26 +166,32 @@ Resources:
                 Service: lambda.amazonaws.com
               Action: sts:AssumeRole
         Path: /
+        ManagedPolicyArns:
+          - !Ref iamLambdaLogAccess
         Policies:
           - PolicyName: !Sub 'securityhub-enabled-role-${AWS::Region}'
             PolicyDocument:
               Version: 2012-10-17
               Statement:
-                - Sid: CreateLogGroup
+                - Sid: AdministerSecurityHub
                   Effect: Allow
                   Action:
-                    - 'logs:CreateLogGroup'
-                    - 'logs:CreateLogStream'
-                    - 'logs:PutLogEvents'
                     - 'securityhub:EnableSecurityHub'
                     - 'securityhub:DisableSecurityHub'
                     - 'securityhub:DescribeHub'
+                  Resource: 
+                    - !Sub 'arn:aws:securityhub:${AWS::Region}:${AWS::AccountId}:/accounts'
+                    - !Sub 'arn:aws:securityhub:${AWS::Region}:${AWS::AccountId}:hub/default'
+                - Sid: SecurityHubCloudFormation
+                  Effect: Allow
+                  Action:
                     - 'cloudformation:CreateStack'
                     - 'cloudformation:DeleteStack'
                     - 'cloudformation:Desc*'
-                  Resource: '*'
+                  Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/securityhub-cfn-stack/*'
+
   iamSecurityHubLambdaAlertsRole:
-      Type: 'AWS::IAM::Role'
+      Type: AWS::IAM::Role
       Properties:
         AssumeRolePolicyDocument:
           Version: 2012-10-17
@@ -124,158 +201,243 @@ Resources:
                 Service: lambda.amazonaws.com
               Action: sts:AssumeRole
         Path: /
+        ManagedPolicyArns:
+          - !Ref iamLambdaLogAccess
         Policies:
           - PolicyName: !Sub 'securityhub-enabled-role-${AWS::Region}'
             PolicyDocument:
               Version: 2012-10-17
               Statement:
-                - Sid: CreateLogGroup
+                - Sid: AdministerSecurityHub
                   Effect: Allow
                   Action:
-                    - 'logs:CreateLogGroup'
-                    - 'logs:CreateLogStream'
-                    - 'logs:PutLogEvents'
                     - 'securityhub:GetFindings'
+                  Resource: 
+                    - !Sub 'arn:aws:securityhub:${AWS::Region}:${AWS::AccountId}:hub/default'
+                - Sid: SendNotifications
+                  Effect: Allow
+                  Action:
                     - 'sns:Publish'
-                  Resource: '*'
+                  Resource: !Ref snsNotifications
+                - Sid: AccessKMSKey
+                  Effect: Allow
+                  Action:
+                    - 'kms:GenerateDataKey'
+                    - 'kms:Decrypt'
+                  Resource: !GetAtt kmsKMSKey.Arn
 
   fnGuardDutyEnabled:
-    Type: 'AWS::Lambda::Function'
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: This function has access to CloudWatch Logs via iamLambdaLogAccess IAM managed policy.
+          - id: W89
+            reason: Lambda does not need access to anything in the VPC. https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/aws-lambda.html
+          - id: W92
+            reason: This function only runs when during CloudFormation operations.
     Properties:
       Handler: index.lambda_handler
       Role: !GetAtt iamGuardDutyEnabledRole.Arn
-      Runtime: python3.8
+      Architectures:
+        - arm64
+      Runtime: python3.9
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: Auto
       MemorySize: 128
       Timeout: 180
       Code:
         ZipFile: |
           import boto3
-          import os
-          import json
-          from botocore.exceptions import ClientError
+          import logging
           import cfnresponse
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
 
           guardduty=boto3.client('guardduty')
           cfn=boto3.client('cloudformation')
 
           def lambda_handler(event, context):
-              print('Event: ', event)
+              logger.info('## EVENT')
+              logger.info(event)
               if 'RequestType' in event:    
-                if event['RequestType'] in ["Create","Update"]:
-                    enabled="Failed"
-                    try:  
-                      response=guardduty.list_detectors()
-                      if "DetectorIds" in response and len(response["DetectorIds"])>0:
-                        enabled="AlreadyEnabled"
-                      elif "DetectorIds" in response and len(response["DetectorIds"])==0:
-                        cfn_response=cfn.create_stack(
-                          StackName='guardduty-cfn-stack',
-                          TemplateBody='{ "AWSTemplateFormatVersion": "2010-09-09",    "Description": "GuardDuty template deployed by Single Account Security Accelerator",    "Resources": { "GuardDutyDetector": {  "Type": "AWS::GuardDuty::Detector",    "Properties": {   "Enable": true  }   } } }'
-                          )
-                        enabled="Enabled"
-                    except Exception as e:
-                        print("Exception: ",e)
-                    responseData = {}
-                    responseData['status'] = enabled
-                    cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID" )
-                elif event['RequestType'] == "Delete":
-                    cfn_response=cfn.delete_stack(
-                            StackName='guardduty-cfn-stack')
-                    cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  if event['RequestType'] in ["Create","Update"]:
+                      enabled="Failed"
+                      try:  
+                          response=guardduty.list_detectors()
+                          if "DetectorIds" in response and len(response["DetectorIds"])>0:
+                              enabled="AlreadyEnabled"
+                          elif "DetectorIds" in response and len(response["DetectorIds"])==0:
+                              cfn_response=cfn.create_stack(
+                                  StackName='guardduty-cfn-stack',
+                                  TemplateBody='{"AWSTemplateFormatVersion":"2010-09-09","Description":"This template is managed by an AWS Lambda function in the Single Account Security Accelerator stack. This template creates an Amazon GuardDuty detector.\n","Resources":{"GuardDutyDetector":{"Type":"AWS::GuardDuty::Detector","Properties":{"Enable":true}}}}'
+                              )
+                              logger.info('## RESPONSE')
+                              logger.info(cfn_response)
+                              enabled="Enabled"
+                      except Exception as e:
+                          logger.info('## EXCEPTION')
+                          logger.info(e)
+                      responseData = {}
+                      responseData['status'] = enabled
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID" )
+                  elif event['RequestType'] == "Delete":
+                      cfn_response=cfn.delete_stack(
+                              StackName='guardduty-cfn-stack')
+                      logger.info('## RESPONSE')
+                      logger.info(cfn_response)
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
   fnConfigEnabled:
-    Type: 'AWS::Lambda::Function'
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: This function has access to CloudWatch Logs via iamLambdaLogAccess IAM managed policy.
+          - id: W89
+            reason: Lambda does not need access to anything in the VPC. https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/aws-lambda.html
+          - id: W92
+            reason: This function only runs when during CloudFormation operations.
     Properties:
       Handler: index.lambda_handler
       Role: !GetAtt iamConfigEnabledRole.Arn
-      Runtime: python3.8
+      Architectures:
+        - arm64
+      Runtime: python3.9
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: Auto
       MemorySize: 128
       Timeout: 300
       Code:
         ZipFile: |
           import boto3
-          import os
-          import json
-          from botocore.exceptions import ClientError
+          import logging
           import cfnresponse
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
 
           config=boto3.client('config')
           cfn=boto3.client('cloudformation')
 
           def lambda_handler(event, context):
-              print('Event: ', event)
+              logger.info('## EVENT')
+              logger.info(event)
               if 'RequestType' in event:    
-                if event['RequestType'] in ["Create","Update"]:
-                    enabled="Failed"
-                    try:  
-                      response=config.describe_configuration_recorders()
-                      if "ConfigurationRecorders" in response and len(response["ConfigurationRecorders"])>0:
-                        enabled="AlreadyEnabled"
-                      elif "ConfigurationRecorders" in response and len(response["ConfigurationRecorders"])==0:
-                        cfn_response=cfn.create_stack(
-                          StackName='config-cfn-stack',
-                          TemplateBody='{"AWSTemplateFormatVersion":"2010-09-09","Description":"This template creates a Config Recorder and an Amazon S3 bucket where logs are published.\n","Resources":{"ConfigRole":{"Type":"AWS::IAM::Role","Properties":{"AssumeRolePolicyDocument":{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["config.amazonaws.com"]},"Action":["sts:AssumeRole"]}]},"ManagedPolicyArns":["arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"]}},"ConfigRecorder":{"Type":"AWS::Config::ConfigurationRecorder","Properties":{"Name":"default","RecordingGroup":{"AllSupported":true,"IncludeGlobalResourceTypes":true},"RoleARN":{"Fn::GetAtt":["ConfigRole","Arn"]}}},"DeliveryChannel":{"Type":"AWS::Config::DeliveryChannel","Properties":{"S3BucketName":{"Ref":"S3ConfigBucket"}}},"S3ConfigBucket":{"UpdateReplacePolicy":"Retain","DeletionPolicy":"Retain","Type":"AWS::S3::Bucket","Properties":{"BucketName":{"Fn::Sub":"config-bucket-${AWS::AccountId}-${AWS::Region}"},"PublicAccessBlockConfiguration":{"BlockPublicAcls":true,"BlockPublicPolicy":true,"IgnorePublicAcls":true,"RestrictPublicBuckets":true},"BucketEncryption":{"ServerSideEncryptionConfiguration":[{"ServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}}},"S3ConfigBucketPolicy":{"Type":"AWS::S3::BucketPolicy","Properties":{"Bucket":{"Ref":"S3ConfigBucket"},"PolicyDocument":{"Version":"2012-10-17","Statement":[{"Sid":"AWSBucketPermissionsCheck","Effect":"Allow","Principal":{"Service":["config.amazonaws.com"]},"Action":"s3:GetBucketAcl","Resource":[{"Fn::Sub":"arn:aws:s3:::${S3ConfigBucket}"}]},{"Sid":"AWSBucketDelivery","Effect":"Allow","Principal":{"Service":["config.amazonaws.com"]},"Action":"s3:PutObject","Resource":{"Fn::Sub":"arn:aws:s3:::${S3ConfigBucket}/AWSLogs/*/*"}}]}}}},"Outputs":{"ConfigRoleArn":{"Value":{"Fn::GetAtt":["ConfigRole","Arn"]}},"S3ConfigBucketArn":{"Value":{"Fn::GetAtt":["S3ConfigBucket","Arn"]}}}}',
-                          Capabilities=['CAPABILITY_IAM']
-                          )
-                        waiter = cfn.get_waiter('stack_create_complete')
-                        waiter.wait(StackName='config-cfn-stack')
-                        enabled="Enabled"
-                    except Exception as e:
-                        print("Exception: ",e)
-                    responseData = {}
-                    responseData['status'] = enabled
-                    cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID" )
-                elif event['RequestType'] == "Delete":
-                    cfn_response=cfn.delete_stack(
-                            StackName='config-cfn-stack')
-                    cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  if event['RequestType'] in ["Create","Update"]:
+                      enabled="Failed"
+                      try:  
+                          response=config.describe_configuration_recorders()
+                          if "ConfigurationRecorders" in response and len(response["ConfigurationRecorders"])>0:
+                              enabled="AlreadyEnabled"
+                          elif "ConfigurationRecorders" in response and len(response["ConfigurationRecorders"])==0:
+                              cfn_response=cfn.create_stack(
+                                  StackName='config-cfn-stack',
+                                  TemplateBody='{"AWSTemplateFormatVersion":"2010-09-09","Description":"This template is managed by an AWS Lambda function in the Single Account Security Accelerator stack. This template creates a Config Recorder and an Amazon S3 bucket where logs are published.\n","Resources":{"ConfigRole":{"Type":"AWS::IAM::Role","Properties":{"AssumeRolePolicyDocument":{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["config.amazonaws.com"]},"Action":["sts:AssumeRole"]}]},"ManagedPolicyArns":["arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"]}},"ConfigRecorder":{"Type":"AWS::Config::ConfigurationRecorder","Properties":{"Name":"default","RecordingGroup":{"AllSupported":true,"IncludeGlobalResourceTypes":true},"RoleARN":{"Fn::GetAtt":["ConfigRole","Arn"]}}},"DeliveryChannel":{"Type":"AWS::Config::DeliveryChannel","Properties":{"S3BucketName":{"Ref":"S3ConfigBucket"}}},"S3ConfigBucket":{"UpdateReplacePolicy":"Retain","DeletionPolicy":"Retain","Type":"AWS::S3::Bucket","Metadata":{"cfn_nag":{"rules_to_suppress":[{"id":"W35","reason":"This bucket is used for AWS Config. You can turn on bucket logging if required."}]}},"Properties":{"BucketName":{"Fn::Sub":"config-bucket-${AWS::AccountId}-${AWS::Region}"},"PublicAccessBlockConfiguration":{"BlockPublicAcls":true,"BlockPublicPolicy":true,"IgnorePublicAcls":true,"RestrictPublicBuckets":true},"BucketEncryption":{"ServerSideEncryptionConfiguration":[{"ServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}}},"S3ConfigBucketPolicy":{"Type":"AWS::S3::BucketPolicy","Properties":{"Bucket":{"Ref":"S3ConfigBucket"},"PolicyDocument":{"Version":"2012-10-17","Statement":[{"Sid":"AWSBucketPermissionsCheck","Effect":"Allow","Principal":{"Service":["config.amazonaws.com"]},"Action":"s3:GetBucketAcl","Resource":[{"Fn::Sub":"arn:aws:s3:::${S3ConfigBucket}"}]},{"Sid":"AWSBucketDelivery","Effect":"Allow","Principal":{"Service":["config.amazonaws.com"]},"Action":"s3:PutObject","Resource":{"Fn::Sub":"arn:aws:s3:::${S3ConfigBucket}/AWSLogs/*/*"}}]}}}},"Outputs":{"ConfigRoleArn":{"Value":{"Fn::GetAtt":["ConfigRole","Arn"]}},"S3ConfigBucketArn":{"Value":{"Fn::GetAtt":["S3ConfigBucket","Arn"]}}}}',
+                                  Capabilities=['CAPABILITY_IAM']
+                                  )
+                              logger.info('## RESPONSE')
+                              logger.info(cfn_response)
+                              waiter = cfn.get_waiter('stack_create_complete')
+                              waiter.wait(StackName='config-cfn-stack')
+                              enabled="Enabled"
+                      except Exception as e:
+                          logger.info('## EXCEPTION')
+                          logger.info(e)
+                      responseData = {}
+                      responseData['status'] = enabled
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID" )
+                  elif event['RequestType'] == "Delete":
+                      cfn_response=cfn.delete_stack(
+                              StackName='config-cfn-stack')
+                      logger.info('## RESPONSE')
+                      logger.info(cfn_response)
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
   fnSecurityHubEnabled:
-    Type: 'AWS::Lambda::Function'
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: This function has access to CloudWatch Logs via iamLambdaLogAccess IAM managed policy.
+          - id: W89
+            reason: Lambda does not need access to anything in the VPC. https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/aws-lambda.html
+          - id: W92
+            reason: This function only runs when during CloudFormation operations.
     Properties:
       Handler: index.lambda_handler
       Role: !GetAtt iamSecurityHubEnabledRole.Arn
-      Runtime: python3.8
+      Architectures:
+        - arm64
+      Runtime: python3.9
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: Auto
       MemorySize: 128
       Timeout: 180
       Code:
         ZipFile: |
           import boto3
-          import os
-          import json
-          from botocore.exceptions import ClientError
+          import logging
           import cfnresponse
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
 
           securityhub=boto3.client('securityhub')
           cfn=boto3.client('cloudformation')
 
           def lambda_handler(event, context):
-              print('Event: ', event)
+              logger.info('## EVENT')
+              logger.info(event)
               if 'RequestType' in event:    
-                if event['RequestType'] in ["Create","Update"]:
-                    enabled="Failed"
-                    try:  
-                      response=securityhub.describe_hub()
-                      enabled="AlreadyEnabled"
-                    except securityhub.exceptions.InvalidAccessException:
-                      cfn_response=cfn.create_stack(
-                        StackName='securityhub-cfn-stack',
-                        TemplateBody='{"AWSTemplateFormatVersion":"2010-09-09","Description":"Enables Security Hub in the account","Resources":{"SecurityHub":{"Type":"AWS::SecurityHub::Hub"}}}'
-                        )
-                      enabled="Enabled"
-                    except Exception as e:
-                        print("Exception: ",e)
-                    responseData = {}
-                    responseData['status'] = enabled
-                    cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID" )
-                elif event['RequestType'] == "Delete":
-                    cfn_response=cfn.delete_stack(
-                            StackName='securityhub-cfn-stack')
-                    cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  if event['RequestType'] in ["Create","Update"]:
+                      enabled="Failed"
+                      try:  
+                          response=securityhub.describe_hub()
+                          logger.info('## RESPONSE')
+                          logger.info(response)
+                          enabled="AlreadyEnabled"
+                      except securityhub.exceptions.InvalidAccessException:
+                          cfn_response=cfn.create_stack(
+                          StackName='securityhub-cfn-stack',
+                          TemplateBody='{"AWSTemplateFormatVersion":"2010-09-09","Description":"This template is managed by an AWS Lambda function in the Single Account Security Accelerator stack. This template enables Security Hub, AWS Foundational Security Best Practices standard, and CIS AWS Foundational Benchmark.\n","Resources":{"SecurityHub":{"Type":"AWS::SecurityHub::Hub"}}}'
+                          )
+                          logger.info('## RESPONSE')
+                          logger.info(cfn_response)
+                          enabled="Enabled"
+                      except Exception as e:
+                          logger.info('## EXCEPTION')
+                          logger.info(e)
+                      responseData = {}
+                      responseData['status'] = enabled
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID" )
+                  elif event['RequestType'] == "Delete":
+                      cfn_response=cfn.delete_stack(
+                              StackName='securityhub-cfn-stack')
+                      logger.info('## RESPONSE')
+                      logger.info(cfn_response)
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
   fnSecurityHubLambdaAlert:
-    Type: 'AWS::Lambda::Function'
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: This function has access to CloudWatch Logs via iamLambdaLogAccess IAM managed policy.
+          - id: W89
+            reason: Lambda does not need access to anything in the VPC. https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/aws-lambda.html
+          - id: W92
+            reason: This function only runs when during CloudFormation operations.
     Properties:
       Handler: index.lambda_handler
       Role: !GetAtt iamSecurityHubLambdaAlertsRole.Arn
-      Runtime: python3.8
+      Architectures:
+        - arm64
+      Runtime: python3.9
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: Auto
       MemorySize: 128
       Timeout: 180
       Environment:
@@ -341,29 +503,46 @@ Resources:
               )
               return response
 
-
   ConfigureGuardDuty:
-    Type: 'Custom::LambdaCustomResource'
+    Type: Custom::LambdaCustomResource
     Properties:
       ServiceToken: !GetAtt fnGuardDutyEnabled.Arn
 
   ConfigureConfig:
-    Type: 'Custom::LambdaCustomResource'
+    Type: Custom::LambdaCustomResource
     Properties:
       ServiceToken: !GetAtt fnConfigEnabled.Arn
 
   ConfigureSecurityHub:
     DependsOn: ConfigureConfig
-    Type: 'Custom::LambdaCustomResource'
+    Type: Custom::LambdaCustomResource
     Properties:
       ServiceToken: !GetAtt fnSecurityHubEnabled.Arn
 
   snsNotifications:
     Type: AWS::SNS::Topic
     Properties:
+      KmsMasterKeyId: !GetAtt kmsKMSKey.Arn
       Subscription:
         - Endpoint: !Ref pEmailNotification
           Protocol: email
+
+  snsNotificationsPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Id: snsNotificationsPolicy
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Allow events
+            Effect: Allow
+            Principal:
+              Service: 'events.amazonaws.com'
+            Action:
+              - sns:Publish
+            Resource: !Ref snsNotifications
+      Topics:
+        - !Ref snsNotifications
 
   ruleGuardDutyAlerts:
     Type: AWS::Events::Rule
