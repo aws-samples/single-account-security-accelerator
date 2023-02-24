@@ -1,1 +1,5 @@
 _embedded-cfn-py/
+settings.json
+.DS_Store
+*.txt
+.vscode/
