@@ -148,6 +148,12 @@ Resources:
                     - 'guardduty:ListDetectors'
                   Resource: 
                     - '*'
+                - Sid: IAMAccess
+                  Effect: Allow
+                  Action:
+                    - 'iam:CreateServiceLinkedRole'
+                  Resource: 
+                    - !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/guardduty.amazonaws.com/AWSServiceRoleForAmazonGuardDuty'
 
   iamStepFunctionSecurityHubRole:
       Type: AWS::IAM::Role
@@ -193,7 +199,7 @@ Resources:
                   Action:
                     - 's3:ListBucket'
                     - 's3:PutBucketPolicy'
-                    - 's3:PutPublicAccessBlock'
+                    - 's3:PutBucketPublicAccessBlock'
                     - 's3:CreateBucket'
                   Resource:
                     - !Sub 'arn:aws:s3:::config-bucket-${AWS::AccountId}'
@@ -245,7 +251,7 @@ Resources:
                   Action:
                     - 's3:ListBucket'
                     - 's3:PutBucketPolicy'
-                    - 's3:PutPublicAccessBlock'
+                    - 's3:PutBucketPublicAccessBlock'
                     - 's3:CreateBucket'
                   Resource:
                     - !Sub 'arn:aws:s3:::cloudtrail-bucket-${AWS::AccountId}'
