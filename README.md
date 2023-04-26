@@ -20,7 +20,7 @@ Security Hub enables two best practice standards by default.
 
 ## Architecture overview
 
-![Architecture Overview](SingleAccountSecurityPostureAccelerator-Detail.drawio.png)
+![Architecture Overview](/img/SingleAccountSecurityPostureAccelerator.drawio.png)
 
 ## Prerequisites
  - Access to an AWS user with sufficient permissions
