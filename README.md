@@ -102,7 +102,7 @@ You must also stop the security services from running and delete the S3 buckets 
 ## Next steps
 This solution is a foundation to improve your security posture. To continue your security journey, AWS has produced the [Startup Security Baseline](https://docs.aws.amazon.com/prescriptive-guidance/latest/aws-startup-security-baseline) to build upon the best practices shown here and to further solidify your security operations in AWS. 
 
-Follow the steps under Securing your account, and securing your workloads.
+Follow the steps under securing your account, and securing your workloads.
 
 ## Authors and acknowledgment
 This was created by Jeremy Schiefer, Brian Galloway, and Anthony Harvey of Amazon Web Services.
