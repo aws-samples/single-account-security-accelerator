@@ -579,7 +579,7 @@ Resources:
           - id: W89
             reason: Lambda does not need access to anything in the VPC. https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/aws-lambda.html
           - id: W92
-            reason: This function only runs when during CloudFormation operations.
+            reason: This function is used for Security Hub reports. ReservedConcurrentExecutions can be set based on requirements.
     Properties:
       Handler: index.lambda_handler
       Role: !GetAtt iamSecurityHubLambdaAlertsRole.Arn
