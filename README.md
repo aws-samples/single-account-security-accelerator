@@ -52,7 +52,7 @@ The single account security accelerator will take about five minutes to deploy. 
 ## Post-installation notes
 SASA uses [AWS Step Functions](https://aws.amazon.com/step-functions/) to check if the security service already deployed and deploy them if needed. If the service is already deployed, no action is taken. If the service is not deployed, the Step Function state machine makes the service calls to enable them.
 
-An [Amazon EventBridge](https://aws.amazon.com/eventbridge/) rule will trigger the step functions based on the frequency set in the deployment step 8. After the deploying the CloudFormation template, you can wait until the next cron frequency or run them on demand. To run on demand, follow the steps below.
+An [Amazon EventBridge](https://aws.amazon.com/eventbridge/) rule will trigger the step functions based on the frequency set in the deployment step 8. After deploying the CloudFormation template, you can wait until the next cron frequency or run them on demand. To run on demand, follow the steps below.
 
 1. Navigate to the [Step Functions console](https://console.aws.amazon.com/states/).
 2. Select the state machine starting with **stepEnableGuardDuty-XXX**.
