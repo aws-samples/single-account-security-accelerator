@@ -4,12 +4,16 @@ Parameters:
   pEmailNotification:
     Type: String
     Default: email@domain.com
+    Description: Enter the email address to receive GuardDuty and Security Hub findings.
   pSecurityHubEmailsRate:
     Type: String
     Default: cron(0 17 * * ? *) 
+    Description: Enter the frequency (cron syntax) to receive the top 10 critical and high Security Hub findings. The default cron syntax is daily at 10am PDT.
   pEnableSecurityServicesRate:
     Type: String
-    Default: cron(20 1 * * ? *) 
+    Default: cron(0 15 * * ? *)     
+    Description: Enter the frequency (cron syntax) to check and enable the security services included in the solution. The default cron syntax is daily at 8am PDT.
+
 
 Resources:
 
@@ -194,6 +198,13 @@ Resources:
                     - 'iam:CreateServiceLinkedRole'
                   Resource: 
                     - !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/securityhub.amazonaws.com/AWSServiceRoleForSecurityHub'
+                    - !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig'
+                - Sid: ConfigRole
+                  Effect: Allow
+                  Action:
+                    - 'iam:PassRole'
+                  Resource: 
+                    - !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig'    
                 - Sid: S3access
                   Effect: Allow
                   Action:
@@ -326,7 +337,7 @@ Resources:
             Next: DescribeHub
           ConfigRecorderCreatedNotRecording:
             Type: Pass
-            Next: HeadBucket
+            Next: CreateBucket
           StartConfigurationRecorder:
             Type: Task
             Parameters:
@@ -355,17 +366,6 @@ Resources:
               ControlFindingGenerator: SECURITY_CONTROL
               EnableDefaultStandards: true
             Resource: arn:aws:states:::aws-sdk:securityhub:enableSecurityHub
-          HeadBucket:
-            Type: Task
-            Next: PutDeliveryChannel
-            Parameters:
-              Bucket.$: >-
-                States.Format('config-bucket-{}',States.ArrayGetItem(States.StringSplit($$.Execution.Id,':'),4))
-            Resource: arn:aws:states:::aws-sdk:s3:headBucket
-            Catch:
-              - ErrorEquals:
-                  - States.ALL
-                Next: CreateBucket
           CreateBucket:
             Type: Task
             Next: PutPublicAccessBlock
@@ -373,6 +373,10 @@ Resources:
               Bucket.$: >-
                 States.Format('config-bucket-{}',States.ArrayGetItem(States.StringSplit($$.Execution.Id,':'),4))
             Resource: arn:aws:states:::aws-sdk:s3:createBucket
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                Next: PutDeliveryChannel
           PutPublicAccessBlock:
             Type: Task
             Parameters:
@@ -555,7 +559,7 @@ Resources:
             Type: Task
             Parameters:
               Name: sasa-cloudtrail
-              S3BucketName: cloudtrail-bucket-867278553428
+              S3BucketName: !Sub cloudtrail-bucket-${AWS::AccountId}
               EnableLogFileValidation: true
               IncludeGlobalServiceEvents: true
               IsMultiRegionTrail: true

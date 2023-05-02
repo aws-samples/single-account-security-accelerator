@@ -39,8 +39,8 @@ To deploy the Single Account Security Accelerator, follow the steps below.
 7. For Stack name, enter **SASA**.
 8. For Parameters, enter the following:
    1. pEmailNotification - The email address to receive GuardDuty and Security Hub findings.
-   2. pEnableSecurityServicesRate - The frequency (cron syntax) to check and enable the security services included in the solutions.
-   3. pSecurityHubEmailsRate - The frequency (cron syntax) to receive the top 10 critical and high Security Hub findings.
+   2. pEnableSecurityServicesRate - The frequency (cron syntax) to check and enable the security services included in the solution. The default cron syntax is daily at 8am PDT.
+   3. pSecurityHubEmailsRate - The frequency (cron syntax) to receive the top 10 critical and high Security Hub findings. The default cron syntax is daily at 10am PDT.
    ![Specify Stack Details](/img/SpecifyStackDetails.png)
   - For more information on the cron syntax, visit the [Cron specifications](https://docs.aws.amazon.com/lambda/latest/dg/services-cloudwatchevents-expressions.html) in the AWS Documentation.
 9. Choose **Next**.
@@ -52,7 +52,7 @@ The single account security accelerator will take about five minutes to deploy. 
 ## Post-installation notes
 SASA uses [AWS Step Functions](https://aws.amazon.com/step-functions/) to check if the security service already deployed and deploy them if needed. If the service is already deployed, no action is taken. If the service is not deployed, the Step Function state machine makes the service calls to enable them.
 
-A [Amazon EventBridge](https://aws.amazon.com/eventbridge/) rule will trigger the step functions based on the frequency set in the deployment step 8. After the deploying the CloudFormation template, you can wait until the next cron frequency or run them on demand. To run on demand, follow the steps below.
+An [Amazon EventBridge](https://aws.amazon.com/eventbridge/) rule will trigger the step functions based on the frequency set in the deployment step 8. After the deploying the CloudFormation template, you can wait until the next cron frequency or run them on demand. To run on demand, follow the steps below.
 
 1. Navigate to the [Step Functions console](https://console.aws.amazon.com/states/).
 2. Select the state machine starting with **stepEnableGuardDuty-XXX**.
