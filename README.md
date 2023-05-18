@@ -29,7 +29,7 @@ Security Hub enables two best practice standards by default.
 ## Deployment
 To deploy the Single Account Security Accelerator, follow the steps below.
 
-1. Download this [cloudformation template](https://raw.githubusercontent.com/aws-samples/single-account-security-accelerator/main/deploy.yaml)
+1. Download this [CloudFormation template](https://raw.githubusercontent.com/aws-samples/single-account-security-accelerator/main/deploy.yaml)
 2. Navigate to the [AWS CloudFormation console](https://console.aws.amazon.com/cloudformation).
 3. In the navigation pane, choose **Stacks**.
 4. Choose **Create stack**.
