@@ -16,20 +16,164 @@ SASA will setup an [Amazon SNS](https://aws.amazon.com/sns/) topic to send the f
 
 Security Hub enables two best practice standards by default.
   - AWS Foundational Security Best Practices ([FSBP](https://docs.aws.amazon.com/securityhub/latest/userguide/fsbp-standard.html))
-  - Center for Internet Secuirty (CIS) v1.2 [AWS Foundation Benchmark](https://docs.aws.amazon.com/securityhub/latest/userguide/cis-aws-foundations-benchmark.html)
+  - Center for Internet Security (CIS) v1.2 [AWS Foundation Benchmark](https://docs.aws.amazon.com/securityhub/latest/userguide/cis-aws-foundations-benchmark.html)
 
 ## Architecture overview
 
-![Architecture Overview](/img/SingleAccountSecurityPostureAccelerator.drawio.png)
+![Architecture Overview](/img/SASA-Architecture.png)
 
 ## Prerequisites
  - Access to an AWS user with sufficient permissions
- - An email address to receive GuardDuty findings, preferably one that can be accessed by multiple people to reduce single points of failure
+ - An email address to receive security findings, preferably one that can be accessed by multiple people to reduce single points of failure
 
 ## Deployment
-To deploy the Single Account Security Accelerator, follow the steps below.
+Single Account Security Accelerator (SASA) is designed to be deployed to a single account. You must deploy the template in each Region you want to monitor. As a best practice, you should monitor each Region in a single account environment. For customers with multiple accounts, you may consider a [service control policy to deny access to the Region](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps_examples_general.html#example-scp-deny-region) as a mitigating control.
 
-1. Download this [cloudformation template](#linkhere)
+|Deployment Type|AWS CloudShell|AWS console|
+| --- | --- | --- |
+| Multi-region | [Link (recommended)](#aws-cloudshell) | [Link](#aws-console) |
+| Single Region | [Link](#aws-cloudshell-1) | [Link](#aws-console-1) |
+
+### Multi-Region
+To deploy Single Account Security Accelerator to all Regions in your account, follow these steps.
+
+#### AWS CloudShell
+<details>
+
+**Step 1**: Deploy the CloudFormation template to create prerequisite roles.
+This step deploys AWSCloudFormationStackSetAdministrationRole and AWSCloudFormationStackSetExecutionRole to deploy CloudFormation StackSets.
+
+1. To download the template, open AWS CloudShell in the Region where you want to aggregate findings (main Region) and enter the following command. 
+
+```bash
+wget https://raw.githubusercontent.com/aws-samples/single-account-security-accelerator/main/1-prerequisite-roles.yaml
+```
+
+2. To deploy the CloudFormation template to create the prerequisite roles, enter the following command.
+   - $AWS_REGION will be automatically replaced with the Region you are running AWS CloudShell in.
+
+```bash
+aws cloudformation deploy --template-file 1-prerequisite-roles.yaml \
+--stack-name CloudFormation-StackSet-roles \
+--region $AWS_REGION \
+--capabilities CAPABILITY_NAMED_IAM
+```
+
+Note: If you get an error that `AWSCloudFormationStackSetExecutionRole already exists`, it is possible that the StackSet permissions have already been setup in your account. For more information, visit [Prerequisites for stack set operations](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/stacksets-prereqs.html) in the AWS CloudFormation User Guide. Continue to Step 2. 
+
+**Step 2**: Deploy the CloudFormation template to deploy the Single Account Security Accelerator.
+This step deploys the solution to all Regions in your account.
+
+1. To download the template, open AWS CloudShell in the Region where you want to aggregate findings (main Region) and enter the following command. 
+
+```bash
+wget https://raw.githubusercontent.com/aws-samples/single-account-security-accelerator/main/2-deploy.yaml
+```
+
+2. To deploy the template, enter the following command.
+   - Replace **\<email\>** with the email to receive GuardDuty and Security Hub findings.
+   - $AWS_REGION will be automatically replaced with the Region you are running AWS CloudShell in.
+
+```bash
+aws cloudformation create-stack-set --template-body file://2-deploy.yaml \
+--stack-set-name SASA-MR \
+--permission-model SELF_MANAGED \
+--capabilities CAPABILITY_NAMED_IAM \
+--parameters ParameterKey=pEmailNotification,ParameterValue=<email> ParameterKey=pHomeRegion,ParameterValue=$AWS_REGION \
+--region $AWS_REGION
+```
+
+3. Use the following command to create a stack instances for each enabled Region in your account.
+
+```bash
+aws cloudformation create-stack-instances --stack-set-name SASA-MR \
+--accounts $(aws sts get-caller-identity --query "Account" --output text)  \
+--regions $(aws ec2 describe-regions --query "Regions[].RegionName" --output text) \
+--operation-preferences RegionConcurrencyType=PARALLEL,FailureTolerancePercentage=100,MaxConcurrentPercentage=100 \
+--region $AWS_REGION
+```
+
+</details>
+
+#### AWS Console
+<details>
+
+**Step 1**: Deploy the CloudFormation template to create prerequisite roles.
+This step deploys AWSCloudFormationStackSetAdministrationRole and AWSCloudFormationStackSetExecutionRole to deploy CloudFormation StackSets. If you already have these roles configured, you can skip step 1.
+
+1. Download the [1-prerequisite-roles.yaml](https://raw.githubusercontent.com/aws-samples/single-account-security-accelerator/main/1-prerequisite-roles.yaml) CloudFormation template.
+2. Navigate to the [AWS CloudFormation console](https://console.aws.amazon.com/cloudformation).
+3. In the navigation pane, choose **Stacks**.
+4. Choose **Create stack**.
+5. Under Specify template, select **Upload a template file** and choose **1-prerequisite-roles.yaml** you downloaded in step 1.
+6. Choose **Next**.
+7. For Stack name, enter **CloudFormation-StackSet-roles**.
+8. Choose **Next**.
+9.  On the Configure stack options page, choose **Next**. 
+10. On the **Review** page, select the box **I acknowledge that AWS CloudFormation might create IAM resources with custom names.** and choose **Submit**.
+
+Note: If you get an error that `AWSCloudFormationStackSetExecutionRole already exists`, it is possible that the StackSet permissions have already been setup in your account. For more information, visit [Prerequisites for stack set operations](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/stacksets-prereqs.html) in the AWS CloudFormation User Guide. Continue to Step 2.
+
+**Step 2**: Deploy the CloudFormation template to deploy the Single Account Security Accelerator.
+This step deploys the solution to all Regions in your account.
+
+1. Download the [2-deploy.yaml](https://raw.githubusercontent.com/aws-samples/single-account-security-accelerator/main/2-deploy.yaml) CloudFormation template.
+2. Navigate to the [AWS CloudFormation console](https://console.aws.amazon.com/cloudformation).
+3. In the navigation pane, choose **StackSets**.
+4. Choose **Create StackSet**.
+5. Under Specify template, select **Upload a template file**.
+6. Choose **2-deploy.yaml** you downloaded in step 1.
+7. For Stack name, enter **SASA-MR**.
+8. For Parameters, enter the following:
+   1. pEmailNotification - The email address to receive GuardDuty and Security Hub findings.
+   2. pEnableSecurityServicesRate - The frequency (cron syntax) to check and enable the security services included in the solution. The default cron syntax is daily at 8am PDT.
+   3. pSecurityHubEmailsRate - The frequency (cron syntax) to receive the top 10 critical and high Security Hub findings. The default cron syntax is daily at 10am PDT.
+   ![Specify Stack Details](/img/SpecifyStackDetails.png)
+  - For more information on the cron syntax, visit the [Cron specifications](https://docs.aws.amazon.com/lambda/latest/dg/services-cloudwatchevents-expressions.html) in the AWS Documentation.
+9. Choose **Next**.
+10. On the Configure StackSet options page, choose **Next**. 
+11. On the Set deployment options, enter the following:
+    1.  For **Accounts** enter your 12 digit account number.
+    2.  For **Specify regions**, choose the Regions you have enabled. There are 17 Regions enabled by default. For more information, visit the [Amazon EC2 guide](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html).
+        ![Choose Region](/img/ChooseRegions.png)
+    3.  Under **Deployment options**, for **Failure tolerance**, enter **100**.
+    4.  For **Region Concurrency**, choose **Parallel**.
+12. Choose **Next**.
+13. On the **Review** page, select the box **I acknowledge that AWS CloudFormation might create IAM resources.** and choose **Submit**.
+
+</details>
+
+### Single Region
+To deploy the Single Account Security Accelerator in a single Region, follow the steps below. You may want to do this for testing, before you monitor each Region.
+
+#### AWS CloudShell
+<details>
+
+1. To download the template, open AWS CloudShell in the Region where you want to monitor and enter the following command. 
+
+```bash
+wget https://raw.githubusercontent.com/aws-samples/single-account-security-accelerator/main/2-deploy.yaml
+```
+
+2. To deploy the template, enter the following command. 
+   - Replace **\<email\>** with the email to receive GuardDuty and Security Hub findings.
+   - $AWS_REGION will be automatically replaced with the Region you are running AWS CloudShell in.
+
+```bash
+aws cloudformation deploy --template-file deploy.yaml \
+--stack-name SASA \
+--region $AWS_REGION \ 
+--capabilities CAPABILITY_IAM \
+--parameters ParameterKey=pEmailNotification,ParameterValue=<email> ParameterKey=pHomeRegion,ParameterValue=$AWS_REGION
+```
+
+</details>
+
+#### AWS Console
+
+<details>
+
+1. Download this [cloudformation template](https://raw.githubusercontent.com/aws-samples/single-account-security-accelerator/main/2-deploy.yaml)
 2. Navigate to the [AWS CloudFormation console](https://console.aws.amazon.com/cloudformation).
 3. In the navigation pane, choose **Stacks**.
 4. Choose **Create stack**.
@@ -49,18 +193,16 @@ To deploy the Single Account Security Accelerator, follow the steps below.
 
 The single account security accelerator will take about five minutes to deploy. You will get an email from Amazon SNS to confirm your email address you entered in step 8. You will not receive GuardDuty or Security Hub notifications until you confirm your email.
 
+</details>
+
 ## Post-installation notes
+Before receiving findings, you must confirm your email address. During the CloudFormation deployment, you will get an email with the subject "AWS Notification - Subscription Confirmation". Choose **Confirm subscription** to start receiving GuardDuty and Security Hub notifications.
+
 SASA uses [AWS Step Functions](https://aws.amazon.com/step-functions/) to check if the security service already deployed and deploy them if needed. If the service is already deployed, no action is taken. If the service is not deployed, the Step Function state machine makes the service calls to enable them.
 
-An [Amazon EventBridge](https://aws.amazon.com/eventbridge/) rule will trigger the step functions based on the frequency set in the deployment step 8. After deploying the CloudFormation template, you can wait until the next cron frequency or run them on demand. To run on demand, follow the steps below.
+The CloudFormation template has a custom resource that starts the Step Functions as part of the CloudFormation deployment. An [Amazon EventBridge](https://aws.amazon.com/eventbridge/) rule will run the step functions based on the frequency set in the deployment step 8 to ensure they are enabled. 
 
-1. Navigate to the [Step Functions console](https://console.aws.amazon.com/states/).
-2. Select the state machine starting with **stepEnableGuardDuty-XXX**.
-3. Choose **Start execution**.
-   ![Start execution](img/StartExecution.png)
-4. On the start execution window, choose **Start execution**.
-   ![Start execution](img/StartExecutionWindow.png)
-5. Repeat steps 2-4 for **stepEnableSecurityHubandConfig** and **stepEnableCloudTrail**.
+The Region you deploy the CloudFormation is considered your main Region. GuardDuty findings will be sent to Security Hub in the same Region. Security Hub will aggregate all findings to your main Region. For more details about cross-Region replication, visit [Configuring finding aggregation](https://docs.aws.amazon.com/securityhub/latest/userguide/finding-aggregation.html) in the Security Hub User Guide.
 
 ## Budgetary AWS costs
 Each of the services deployed in this solution may incur costs. For most customers, we expect this solution to cost less than 1% of your monthly AWS spend. The costs of the services are based on the amount of activity and changes in your account. For more information, visit the individual pricing pages below. 
@@ -84,15 +226,48 @@ Each of the services deployed in this solution may incur costs. For most custome
 ## Clean up
 You can delete this solution and disable the security services by following these steps.
 
+#### Multi-Region
+Follow the steps to delete the CloudFormation StackSet and Stack deployed in each Region.
+
+<details>
+
+1. Navigate to the [AWS CloudFormation console](https://console.aws.amazon.com/cloudformation) in the account you created the member role StackSet.
+   
+2. In the navigation pane, choose **StackSets**.
+
+3. Choose the **sasa-mr** StackSet.
+
+4. Choose **Actions**, then **Delete stacks form StackSet**.
+
+5. Specify the same **AWS Account ID** when you created the StackSet.
+
+6. For **Specify regions**, choose **Add all regions**.
+
+7. Choose **Next**, and **Submit**.
+
+After change finishes, you can delete the StackSet.
+
+1. Choose the **sasa-mr** StackSet.
+
+2. Choose **Actions**, then **Delete StackSet**.
+
+</details>
+
+#### Single Region
+
+<details>
+
 1. Navigate to the [AWS CloudFormation console](https://console.aws.amazon.com/cloudformation).
 2. In the navigation pane, choose **Stacks**.
 3. Choose the SASA stack you created in step 7 of deployment.
 4. Choose **Delete**.
 5. On the Delete SASA window, choose **Delete Stack**.
 
-This will delete the Step Function state machines used to enable the security services. You will no longer get alerts for GuardDuty findings or Security Hub recommendations.
+</details>
 
-You must also stop the security services from running and delete the S3 buckets with logs.
+This will delete the Step Function state machines used to enable the security services. You will no longer get alerts for GuardDuty findings or Security Hub recommendations. 
+
+You must also stop the security services from running and delete the S3 buckets with logs. You must perform these steps in each Region you no longer want to monitor.
 1. Suspend or disable GuardDuty in the [Amazon GuardDuty user guide](https://docs.aws.amazon.com/guardduty/latest/ug/guardduty_suspend-disable.html).
 2. Disable security hub in the [AWS Security Hub user guide](https://docs.aws.amazon.com/securityhub/latest/userguide/securityhub-disable.html).
 3. Stop the configuration Recorder in the [AWS Config developer guide](https://docs.aws.amazon.com/config/latest/developerguide/stop-start-recorder.html). 
