@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 AWSTemplateFormatVersion: 2010-09-09
 
 Parameters:
@@ -13,11 +16,17 @@ Parameters:
     Type: String
     Default: cron(0 15 * * ? *)     
     Description: Enter the frequency (cron syntax) to check and enable the security services included in the solution. The default cron syntax is daily at 8am PDT.
+  pHomeRegion:
+    Type: String
+    Default: us-east-1
+    Description: Enter the Region where you want to consolidate alerting. If you are deploying in a single Region, enter that Region.
 
+Conditions:
+    isHomeRegion: !Equals [!Ref 'pHomeRegion', !Ref 'AWS::Region']
 
 Resources:
-
   kmsKMSKey:
+    Condition: isHomeRegion
     Type: AWS::KMS::Key
     Properties:
       EnableKeyRotation: true
@@ -47,6 +56,7 @@ Resources:
       PendingWindowInDays: 7
 
   iamSecurityHubLambdaAlertsRole:
+    Condition: isHomeRegion
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -119,7 +129,7 @@ Resources:
                 Resource: 
                   - !Ref stepEnableGuardDuty
                   - !Ref stepEnableSecurityHubAndConfig
-                  - !Ref stepEnableCloudTrail
+                  - !If [isHomeRegion, !Ref stepEnableCloudTrail, !Ref AWS::NoValue ]
 
   iamStepFunctionGuardDutyRole:
       Type: AWS::IAM::Role
@@ -232,6 +242,7 @@ Resources:
                   Resource: '*'
 
   iamStepFunctionCloudTrailRole:
+      Condition: isHomeRegion
       Type: AWS::IAM::Role
       Metadata:
         cfn_nag:
@@ -464,6 +475,7 @@ Resources:
       RoleArn: !GetAtt iamStepFunctionSecurityHubRole.Arn
 
   stepEnableCloudTrail:
+    Condition: isHomeRegion
     Type: AWS::StepFunctions::StateMachine
     Properties:
       Definition: 
@@ -581,6 +593,7 @@ Resources:
       RoleArn: !GetAtt iamStepFunctionCloudTrailRole.Arn
   
   fnSecurityHubLambdaAlert:
+    Condition: isHomeRegion
     Type: AWS::Lambda::Function
     Metadata:
       cfn_nag:
@@ -665,6 +678,7 @@ Resources:
               return response
 
   snsNotifications:
+    Condition: isHomeRegion
     Type: AWS::SNS::Topic
     Properties:
       KmsMasterKeyId: !GetAtt kmsKMSKey.Arn
@@ -673,6 +687,7 @@ Resources:
           Protocol: email
 
   snsNotificationsPolicy:
+    Condition: isHomeRegion
     Type: AWS::SNS::TopicPolicy
     Properties:
       PolicyDocument:
@@ -690,43 +705,48 @@ Resources:
         - !Ref snsNotifications
 
   ruleGuardDutyAlerts:
+    Condition: isHomeRegion
     Type: AWS::Events::Rule
     Properties:
-      Name: "GuardDutyAlerts"
+      State: ENABLED
       EventPattern: 
         source:
-          - aws.guardduty
-        detail-type:
-          - GuardDuty Finding
+          - aws.securityhub
         detail:
-          severity:
-            - numeric:
-              - '>='
-              - 4
-              - <
-              - 9
+          findings:
+            ProductName:
+              - GuardDuty
+            Severity:
+              Label:
+                - HIGH
+                - MEDIUM
       Targets: 
         - Arn: !Ref snsNotifications
           Id: snsNotifications
           InputTransformer:
             InputPathsMap:
-              Account_ID: $.detail.accountId
-              Finding_ID: $.detail.id
-              Finding_Type: $.detail.type
-              Finding_description: $.detail.description
-              region: $.region
-              severity: $.detail.severity
+              severity: $.detail.findings[0].Severity.Label
+              Account_ID: $.detail.findings[0].AwsAccountId
+              SourceUrl: $.detail.findings[0].SourceUrl
+              Finding_Type: $.detail.findings[0].Types[0]
+              region: $.detail.findings[0].Region
+              Finding_description: $.detail.findings[0].Description
             InputTemplate: >-
-              "AWS account <Account_ID> has a severity <severity> GuardDuty finding type <Finding_Type> in the <region> region."
-              
-              "Finding Description: <Finding_description>"
+              "AWS account ID <Account_ID> has a severity <severity> GuardDuty
+              finding type <Finding_Type> in the <region> Region"
 
-              "For more details navigate to the GuardDuty console at https://console.aws.amazon.com/guardduty/home?region=<region>#/findings?search=id%3D<Finding_ID>"
+
+              "Finding Description:"
+
+              "<Finding_description>"
+
+
+              "For more details open the GuardDuty console at <SourceUrl>"
 
   ruleSecurityHubAlerts:
+    Condition: isHomeRegion
     Type: AWS::Events::Rule
     Properties:
-      Name: "SecurityHubAlerts"
       ScheduleExpression: !Ref pSecurityHubEmailsRate
       State: ENABLED
       Targets:
@@ -746,11 +766,21 @@ Resources:
         - Id: stepEnableSecurityHubAndConfig
           Arn: !GetAtt stepEnableSecurityHubAndConfig.Arn
           RoleArn: !GetAtt iamEventBridgeInvokeStepFunction.Arn
+
+  ruleScheduleEnableCloudTrail:
+    Condition: isHomeRegion
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      ScheduleExpression: !Ref pEnableSecurityServicesRate
+      State: ENABLED
+      Targets:
         - Id: stepEnableCloudTrail
           Arn: !GetAtt stepEnableCloudTrail.Arn
           RoleArn: !GetAtt iamEventBridgeInvokeStepFunction.Arn
 
   permRuleSecurityHubAlerts:
+    Condition: isHomeRegion
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
@@ -758,3 +788,194 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt ruleSecurityHubAlerts.Arn
 
+  iamStartStepFunctionLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: StartStateInline
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'states:StartExecution'
+                Resource:
+                  - !GetAtt stepEnableGuardDuty.Arn
+                  - !GetAtt stepEnableSecurityHubAndConfig.Arn
+                  - !If [isHomeRegion, !GetAtt stepEnableCloudTrail.Arn, !Ref AWS::NoValue ]
+
+  fnStartStepFunctionLambda:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: This function has access to CloudWatch Logs.
+          - id: W89
+            reason: Lambda does not need access to anything in the VPC. https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/aws-lambda.html
+          - id: W92
+            reason: This function is used for Security Hub reports. ReservedConcurrentExecutions can be set based on requirements.
+    Type: AWS::Lambda::Function
+    Properties:
+      Architectures:
+            - arm64
+      Handler: index.lambda_handler
+      Role: !Sub ${iamStartStepFunctionLambdaRole.Arn}
+      Timeout: 120
+      Runtime: python3.10
+      Code:
+        ZipFile: |
+          import os
+          import boto3
+          from botocore.exceptions import ClientError
+          import cfnresponse
+                    
+          def startStateMachine(event, context):
+            responseData = {}
+            client = boto3.client('stepfunctions')
+            try:
+              print("Starting state machine...")
+              response = client.start_execution(stateMachineArn=event['ResourceProperties']['stateMachineArn'])
+              responseData['executionArn'] = response['executionArn']
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            except ClientError as e:
+              print(f"Failed to start {event['ResourceProperties']['stateMachineArn']}")
+              print(e)
+              cfnresponse.send(event, context, cfnresponse.FAILED, e.response)
+
+          def no_op(event, context):
+            responseData = {}
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+
+          def lambda_handler(event,context):
+            print(event)
+            if event['RequestType'] == 'Create':
+              startStateMachine(event, context)
+            else:
+              no_op(event,context)
+
+  startStepEnableGuardDuty:
+    Type: Custom::StartStateMachine
+    Properties:
+      ServiceToken: !GetAtt fnStartStepFunctionLambda.Arn
+      stateMachineArn: !GetAtt stepEnableGuardDuty.Arn
+
+  startStepEnableSecurityHubAndConfig:
+    Type: Custom::StartStateMachine
+    Properties:
+      ServiceToken: !GetAtt fnStartStepFunctionLambda.Arn
+      stateMachineArn: !GetAtt stepEnableSecurityHubAndConfig.Arn
+
+  startStepEnableCloudTrail:
+    Condition: isHomeRegion
+    Type: Custom::StartStateMachine
+    Properties:
+      ServiceToken: !GetAtt fnStartStepFunctionLambda.Arn
+      stateMachineArn: !GetAtt stepEnableCloudTrail.Arn
+
+  iamSecurityHubCreateAggregatorRole:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: CreateFindingAggregator doesn't allow a resource.
+    Condition: isHomeRegion
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CreateAggregatorInline
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - securityhub:CreateFindingAggregator
+                Resource: '*'
+
+  fnSecurityHubCreateAggregatorLambda:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: This function has access to CloudWatch Logs.
+          - id: W89
+            reason: Lambda does not need access to anything in the VPC. https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/aws-lambda.html
+          - id: W92
+            reason: This function is used for Security Hub reports. ReservedConcurrentExecutions can be set based on requirements.
+    Condition: isHomeRegion
+    Type: AWS::Lambda::Function
+    Properties:
+      Architectures:
+            - arm64
+      Handler: index.lambda_handler
+      Role: !Sub ${iamSecurityHubCreateAggregatorRole.Arn}
+      Timeout: 120
+      Runtime: python3.10
+      Code:
+        ZipFile: |
+          import os
+          import boto3
+          from botocore.exceptions import ClientError
+          import cfnresponse
+          import time
+                    
+          def createAggregator(event, context):
+            responseData = {}
+            client = boto3.client('securityhub')
+            try:
+              print("Enabling Region aggregation...")
+              response = client.create_finding_aggregator(RegionLinkingMode='ALL_REGIONS')
+              responseData['FindingAggregatorArn'] = response['FindingAggregatorArn']
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            except ClientError as e:
+              if e.response['Error']['Code'] == 'InvalidInputException':
+                if 'A finding aggregator already exists' in e.response['Error']['Message']:
+                  print(e.response['Error']['Message'])
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              elif e.response['Error']['Code'] == 'InvalidAccessException':
+                if 'is not subscribed to AWS Security Hub' in e.response['Error']['Message']:
+                  print(e.response['Error']['Message'])
+                  print("Retrying in 5 seconds...")
+                  time.sleep(5)
+                  createAggregator(event, context)
+              else:
+                print(f"Failed to create.")
+                print(e)
+                cfnresponse.send(event, context, cfnresponse.FAILED, e.response)
+
+          def no_op(event, context):
+            responseData = {}
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+
+          def lambda_handler(event,context):
+            print(event)
+            if event['RequestType'] == 'Create':
+              createAggregator(event, context)
+            else:
+              no_op(event,context)
+
+  SecurityHubCreateAggregator:
+    DependsOn: startStepEnableSecurityHubAndConfig
+    Condition: isHomeRegion
+    Type: Custom::SecurityHubAggregator
+    Properties:
+      ServiceToken: !GetAtt fnSecurityHubCreateAggregatorLambda.Arn
