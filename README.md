@@ -127,19 +127,22 @@ This step deploys the solution to all Regions in your account.
 8. For Parameters, enter the following:
    1. pEmailNotification - The email address to receive GuardDuty and Security Hub findings.
    2. pEnableSecurityServicesRate - The frequency (cron syntax) to check and enable the security services included in the solution. The default cron syntax is daily at 8am PDT.
-   3. pSecurityHubEmailsRate - The frequency (cron syntax) to receive the top 10 critical and high Security Hub findings. The default cron syntax is daily at 10am PDT.
-   ![Specify Stack Details](/img/SpecifyStackDetails.png)
+   3. pHomeRegion - Enter the Region where you want to consolidate alerting. If you are deploying in a single Region, enter that Region.
+   4. pSecurityHubEmailsRate - The frequency (cron syntax) to receive the top 10 critical and high Security Hub findings. The default cron syntax is daily at 10am PDT.
+9. 
+   ![Specify Stack Details](/img/SpecifyStackDetails2.png)
+
   - For more information on the cron syntax, visit the [Cron specifications](https://docs.aws.amazon.com/lambda/latest/dg/services-cloudwatchevents-expressions.html) in the AWS Documentation.
-9. Choose **Next**.
-10. On the Configure StackSet options page, choose **Next**. 
-11. On the Set deployment options, enter the following:
+10. Choose **Next**.
+11. On the Configure StackSet options page, choose **Next**. 
+12. On the Set deployment options, enter the following:
     1.  For **Accounts** enter your 12 digit account number.
     2.  For **Specify regions**, choose the Regions you have enabled. There are 17 Regions enabled by default. For more information, visit the [Amazon EC2 guide](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html).
         ![Choose Region](/img/ChooseRegions.png)
     3.  Under **Deployment options**, for **Failure tolerance**, enter **100**.
     4.  For **Region Concurrency**, choose **Parallel**.
-12. Choose **Next**.
-13. On the **Review** page, select the box **I acknowledge that AWS CloudFormation might create IAM resources.** and choose **Submit**.
+13. Choose **Next**.
+14. On the **Review** page, select the box **I acknowledge that AWS CloudFormation might create IAM resources.** and choose **Submit**.
 
 </details>
 
@@ -185,7 +188,7 @@ aws cloudformation deploy --template-file deploy.yaml \
    1. pEmailNotification - The email address to receive GuardDuty and Security Hub findings.
    2. pEnableSecurityServicesRate - The frequency (cron syntax) to check and enable the security services included in the solution. The default cron syntax is daily at 8am PDT.
    3. pSecurityHubEmailsRate - The frequency (cron syntax) to receive the top 10 critical and high Security Hub findings. The default cron syntax is daily at 10am PDT.
-   ![Specify Stack Details](/img/SpecifyStackDetails.png)
+   ![Specify Stack Details](/img/SpecifyStackDetails-stack.png)
   - For more information on the cron syntax, visit the [Cron specifications](https://docs.aws.amazon.com/lambda/latest/dg/services-cloudwatchevents-expressions.html) in the AWS Documentation.
 9. Choose **Next**.
 10. On the Configure stack options page, choose **Next**. 
